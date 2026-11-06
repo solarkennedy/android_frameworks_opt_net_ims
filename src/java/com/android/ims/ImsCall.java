@@ -598,6 +598,10 @@ public class ImsCall implements ICall {
     // to the call update. After the application's action (accept/reject) is done,
     // it will be set to null.
     private ImsCallProfile mProposedCallProfile = null;
+    // The last callSessionProgressing asked for local ringback (audio direction INACTIVE).
+    // Some vendor IMS stacks report that only in callSessionProgressing and send every later
+    // callSessionUpdated with a default SEND_RECEIVE media profile, which would stop the tone.
+    private boolean mProgressingLocalRingback = false;
     private ImsReasonInfo mLastReasonInfo = null;
 
     // Media session to control media (audio/video) operations for an IMS call
@@ -1918,6 +1922,7 @@ public class ImsCall implements ICall {
 
     private void clear(ImsReasonInfo lastReasonInfo) {
         mInCall = false;
+        mProgressingLocalRingback = false;
         mHold = false;
         mUpdateRequest = UPDATE_NONE;
         mLastReasonInfo = lastReasonInfo;
@@ -2560,6 +2565,8 @@ public class ImsCall implements ICall {
                 // case the ImsService has not had a chance to update it yet.
                 if( mCallProfile != null && mCallProfile.mMediaProfile != null) {
                     mCallProfile.mMediaProfile.copyFrom(profile);
+                    mProgressingLocalRingback = mCallProfile.mMediaProfile.mAudioDirection
+                            == ImsStreamMediaProfile.DIRECTION_INACTIVE;
                 } else {
                     logi("Call was closed already, skip updating CallProfile");
                 }
@@ -2597,6 +2604,7 @@ public class ImsCall implements ICall {
 
             synchronized(ImsCall.this) {
                 listener = mListener;
+                mProgressingLocalRingback = false;
                 setCallProfile(profile);
             }
 
@@ -2959,6 +2967,15 @@ public class ImsCall implements ICall {
 
             synchronized(ImsCall.this) {
                 listener = mListener;
+                if (mProgressingLocalRingback && profile != null
+                        && profile.mMediaProfile != null
+                        && profile.mMediaProfile.mAudioDirection
+                                == ImsStreamMediaProfile.DIRECTION_SEND_RECEIVE) {
+                    logi("callSessionUpdated :: keeping INACTIVE audio direction from"
+                            + " callSessionProgressing (local ringback)");
+                    profile.mMediaProfile.mAudioDirection =
+                            ImsStreamMediaProfile.DIRECTION_INACTIVE;
+                }
                 setCallProfile(profile);
             }
 
